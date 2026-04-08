@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: committracker
+      POSTGRES_PASSWORD: committracker_dev
+      POSTGRES_DB: commitment_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://committracker:committracker_dev@db:5432/commitment_tracker
+      JWT_SECRET: change-this-in-production-use-a-real-secret
+      PORT: "3001"
+    depends_on:
+      db:
+        condition: service_started
+    restart: on-failure
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
