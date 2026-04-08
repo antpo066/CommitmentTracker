@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviewedStatements Statement[] @relation("ReviewedBy")
+  notes              Note[]
+}
+
+model Person {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  title       String?
+  description String?
+  imageUrl    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  statements  Statement[]
+}
+
+model Statement {
+  id                String        @id @default(cuid())
+  personId          String
+  person            Person        @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  exactQuote        String
+  source            String
+  sourceUrl         String?
+  sourceType        SourceType
+  dateMade          DateTime
+  statementType     StatementType
+  impliedDeadline   DateTime?
+  measurableOutcome String?
+  confidenceScore   Int?          @default(3)
+  status            Status        @default(UNRESOLVED)
+  evidenceNote      String?
+
+  approved          Boolean       @default(false)
+  reviewedById      String?
+  reviewedBy        User?         @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt        DateTime?
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  notes             Note[]
+
+  @@index([personId])
+  @@index([status])
+  @@index([statementType])
+  @@index([dateMade])
+  @@index([approved])
+}
+
+model Note {
+  id          String   @id @default(cuid())
+  statementId String
+  statement   Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  content     String
+  noteType    NoteType @default(CONTEXT)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([statementId])
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+}
+
+enum SourceType {
+  PASTED_TEXT
+  ARTICLE_URL
+  YOUTUBE_TRANSCRIPT
+  TWEET
+  SPEECH
+  INTERVIEW
+  OTHER
+}
+
+enum StatementType {
+  PROMISE
+  PREDICTION
+  COMMITMENT
+  CLAIM
+}
+
+enum Status {
+  UNRESOLVED
+  KEPT
+  DELAYED
+  CONTRADICTED
+  PARTIALLY_FULFILLED
+}
+
+enum NoteType {
+  CONTEXT
+  DISPUTE
+  EVIDENCE
+  CORRECTION
+}
