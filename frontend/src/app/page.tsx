@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/layout/TopNav";
 import { api, type PersonSummary } from "@/lib/api";
+import { getMockPersons } from "@/data/mock-api";
 import { Scale, ChevronRight } from "lucide-react";
 
 export default function Home() {
@@ -14,7 +15,7 @@ export default function Home() {
     api
       .get<PersonSummary[]>("/api/persons")
       .then(setPersons)
-      .catch(console.error)
+      .catch(() => setPersons(getMockPersons()))
       .finally(() => setLoading(false));
   }, []);
 

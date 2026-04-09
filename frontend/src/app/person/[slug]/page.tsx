@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, use } from "react";
 import { api, type PersonSummary, type StatementRecord, type StatementsResponse } from "@/lib/api";
+import { getMockPerson, getMockStatements } from "@/data/mock-api";
 import { TopNav } from "@/components/layout/TopNav";
 import { ProfileHeader } from "@/components/layout/ProfileHeader";
 import { StatsSummary } from "@/components/layout/StatsSummary";
@@ -43,7 +44,14 @@ export default function PersonPage({
         setPerson(p);
         setStatements(s.statements);
       })
-      .catch(console.error)
+      .catch(() => {
+        // Fallback to mock data if backend is unavailable
+        const mp = getMockPerson(slug);
+        if (mp) {
+          setPerson(mp);
+          setStatements(getMockStatements(slug).statements);
+        }
+      })
       .finally(() => setLoading(false));
   }, [slug]);
 

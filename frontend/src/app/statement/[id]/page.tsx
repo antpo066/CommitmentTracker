@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { api, type StatementRecord } from "@/lib/api";
+import { getMockStatement } from "@/data/mock-api";
 import { TopNav } from "@/components/layout/TopNav";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
@@ -18,7 +19,10 @@ export default function StatementDetailPage({ params }: { params: Promise<{ id: 
   useEffect(() => {
     api.get<StatementRecord>(`/api/statements/${id}`)
       .then(setStatement)
-      .catch(console.error)
+      .catch(() => {
+        const mock = getMockStatement(id);
+        if (mock) setStatement(mock);
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
