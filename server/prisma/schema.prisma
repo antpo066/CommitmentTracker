@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Auth ─────────────────────────────────────────────────
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -18,66 +20,8 @@ model User {
 
   reviewedStatements Statement[] @relation("ReviewedBy")
   notes              Note[]
-}
-
-model Person {
-  id          String      @id @default(cuid())
-  name        String
-  slug        String      @unique
-  title       String?
-  description String?
-  imageUrl    String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  statements  Statement[]
-}
-
-model Statement {
-  id                String        @id @default(cuid())
-  personId          String
-  person            Person        @relation(fields: [personId], references: [id], onDelete: Cascade)
-
-  exactQuote        String
-  source            String
-  sourceUrl         String?
-  sourceType        SourceType
-  dateMade          DateTime
-  statementType     StatementType
-  impliedDeadline   DateTime?
-  measurableOutcome String?
-  confidenceScore   Int?          @default(3)
-  status            Status        @default(UNRESOLVED)
-  evidenceNote      String?
-
-  approved          Boolean       @default(false)
-  reviewedById      String?
-  reviewedBy        User?         @relation("ReviewedBy", fields: [reviewedById], references: [id])
-  reviewedAt        DateTime?
-
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-
-  notes             Note[]
-
-  @@index([personId])
-  @@index([status])
-  @@index([statementType])
-  @@index([dateMade])
-  @@index([approved])
-}
-
-model Note {
-  id          String   @id @default(cuid())
-  statementId String
-  statement   Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  authorId    String
-  author      User     @relation(fields: [authorId], references: [id])
-  content     String
-  noteType    NoteType @default(CONTEXT)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([statementId])
+  evidence           Evidence[]
+  disputes           Dispute[]   @relation("DisputeReviewer")
 }
 
 enum Role {
@@ -85,14 +29,110 @@ enum Role {
   EDITOR
 }
 
+// ── People ───────────────────────────────────────────────
+
+model Person {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  title       String?
+  description String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trackedSources String[] // e.g. ["Congressional hearings", "Press conferences"]
+  coverageFrom   DateTime?
+  coverageTo     DateTime?
+
+  sourceDocuments SourceDocument[]
+  statements      Statement[]
+
+  @@index([slug])
+}
+
+// ── Source Documents ─────────────────────────────────────
+
+model SourceDocument {
+  id        String     @id @default(cuid())
+  personId  String
+  person    Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  title     String
+  url       String?
+  sourceType SourceType
+  sourceDate DateTime
+  rawText   String     // full ingested text
+  excerpt   String?    // relevant excerpt if raw is very long
+
+  ingested  Boolean    @default(false) // has extraction been run?
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  statements Statement[]
+  evidence   Evidence[]
+
+  @@index([personId])
+  @@index([sourceDate])
+}
+
 enum SourceType {
-  PASTED_TEXT
-  ARTICLE_URL
+  ARTICLE
+  TRANSCRIPT
   YOUTUBE_TRANSCRIPT
-  TWEET
+  SOCIAL_POST
+  PRESS_RELEASE
   SPEECH
   INTERVIEW
   OTHER
+}
+
+// ── Statements ──────────────────────────────────────────
+
+model Statement {
+  id               String        @id @default(cuid())
+  personId         String
+  person           Person        @relation(fields: [personId], references: [id], onDelete: Cascade)
+  sourceDocumentId String?
+  sourceDocument   SourceDocument? @relation(fields: [sourceDocumentId], references: [id])
+
+  exactQuote        String
+  context           String?      // surrounding context from source
+  interpretation    String?      // what this statement means concretely
+  statementType     StatementType
+  sourceTitle       String       // human-readable source name
+  sourceUrl         String?
+  sourceDate        DateTime
+  impliedDeadline   DateTime?
+  measurableOutcome String?
+  confidenceScore   Int          @default(3) // 1-5
+  status            Status       @default(UNRESOLVED)
+  adminNotes        String?
+
+  // Review workflow
+  approved     Boolean   @default(false)
+  reviewedById String?
+  reviewedBy   User?     @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+
+  // AI extraction metadata
+  aiExtracted  Boolean   @default(false) // was this extracted by AI?
+  aiConfidence Float?    // AI's own confidence in the extraction
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evidence  Evidence[]
+  notes     Note[]
+  disputes  Dispute[]
+
+  @@index([personId])
+  @@index([status])
+  @@index([statementType])
+  @@index([sourceDate])
+  @@index([approved])
+  @@index([sourceDocumentId])
 }
 
 enum StatementType {
@@ -108,11 +148,100 @@ enum Status {
   DELAYED
   CONTRADICTED
   PARTIALLY_FULFILLED
+  TOO_VAGUE
+}
+
+// ── Evidence ────────────────────────────────────────────
+
+model Evidence {
+  id               String         @id @default(cuid())
+  statementId      String
+  statement        Statement      @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  sourceDocumentId String?
+  sourceDocument   SourceDocument? @relation(fields: [sourceDocumentId], references: [id])
+  addedById        String
+  addedBy          User           @relation(fields: [addedById], references: [id])
+
+  excerpt       String        // relevant excerpt from evidence source
+  evidenceDate  DateTime
+  evidenceType  EvidenceType
+  sourceUrl     String?
+  sourceTitle   String?
+  notes         String?
+  statusChange  Status?       // what status this evidence supports
+
+  createdAt DateTime @default(now())
+
+  @@index([statementId])
+}
+
+enum EvidenceType {
+  OFFICIAL_REPORT
+  NEWS_ARTICLE
+  GOVERNMENT_DATA
+  THIRD_PARTY_VERIFICATION
+  STATEMENT_BY_SUBJECT
+  OTHER
+}
+
+// ── Notes ───────────────────────────────────────────────
+
+model Note {
+  id          String    @id @default(cuid())
+  statementId String
+  statement   Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  content     String
+  noteType    NoteType  @default(CONTEXT)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([statementId])
 }
 
 enum NoteType {
   CONTEXT
-  DISPUTE
-  EVIDENCE
-  CORRECTION
+  EDITORIAL
+  RESEARCH
+}
+
+// ── Public Disputes / Corrections ───────────────────────
+
+model Dispute {
+  id          String   @id @default(cuid())
+  statementId String
+  statement   Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  submitterName  String
+  submitterEmail String?
+  content        String     // what they believe is wrong
+  sourceUrl      String?    // supporting evidence URL
+  disputeType    DisputeType
+
+  status      DisputeStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?        @relation("DisputeReviewer", fields: [reviewedById], references: [id])
+  reviewNote   String?
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([statementId])
+  @@index([status])
+}
+
+enum DisputeType {
+  MISQUOTE
+  MISSING_CONTEXT
+  WRONG_STATUS
+  WRONG_ATTRIBUTION
+  OTHER
+}
+
+enum DisputeStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  NOTED
 }
