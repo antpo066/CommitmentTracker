@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { STATUS_CONFIG, TYPE_CONFIG } from "@/lib/constants";
 import type { StatementStatus, StatementType } from "@/lib/types";
-import { Filter, X } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 
 interface FilterState {
   statuses: StatementStatus[];
@@ -17,6 +18,34 @@ interface FilterSidebarProps {
   filters: FilterState;
   onChange: (filters: FilterState) => void;
   totalResults: number;
+}
+
+function Section({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-between w-full py-1 text-[11px] font-semibold text-stone-500 uppercase tracking-wider hover:text-stone-700 transition-colors"
+      >
+        {title}
+        {open ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+      </button>
+      {open && <div className="mt-1.5">{children}</div>}
+    </div>
+  );
 }
 
 export function FilterSidebar({
@@ -56,124 +85,117 @@ export function FilterSidebar({
     });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-          <Filter className="h-3.5 w-3.5" />
-          Filters
-        </div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm font-semibold text-stone-700">
+          {totalResults} statement{totalResults !== 1 ? "s" : ""}
+        </span>
         {hasActiveFilters && (
           <button
             onClick={clearAll}
-            className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-600 transition-colors"
+            className="flex items-center gap-0.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors"
           >
-            <X className="h-3 w-3" />
-            Clear
+            <X className="h-2.5 w-2.5" />
+            Clear all
           </button>
         )}
       </div>
 
-      <p className="text-xs text-stone-400">
-        {totalResults} statement{totalResults !== 1 ? "s" : ""}
-      </p>
-
-      {/* Resolved toggle */}
-      <div>
-        <h4 className="text-xs font-medium text-stone-500 uppercase tracking-wide mb-2">
-          Resolution
-        </h4>
-        <div className="flex rounded-md border border-[var(--color-border)] overflow-hidden">
+      {/* Resolution toggle - chips */}
+      <Section title="Resolution">
+        <div className="flex gap-1">
           {(["all", "resolved", "unresolved"] as const).map((val) => (
             <button
               key={val}
               onClick={() => onChange({ ...filters, resolved: val })}
-              className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+              className={`flex-1 rounded-full py-1 text-[11px] font-medium transition-all ${
                 filters.resolved === val
-                  ? "bg-stone-800 text-white"
-                  : "bg-white text-stone-500 hover:bg-stone-50"
+                  ? "bg-stone-800 text-white shadow-sm"
+                  : "bg-stone-100 text-stone-500 hover:bg-stone-200"
               }`}
             >
               {val.charAt(0).toUpperCase() + val.slice(1)}
             </button>
           ))}
         </div>
-      </div>
+      </Section>
 
-      {/* Status */}
-      <div>
-        <h4 className="text-xs font-medium text-stone-500 uppercase tracking-wide mb-2">
-          Status
-        </h4>
-        <div className="space-y-1">
-          {(Object.entries(STATUS_CONFIG) as [StatementStatus, (typeof STATUS_CONFIG)[StatementStatus]][]).map(
-            ([key, config]) => (
-              <label
-                key={key}
-                className="flex items-center gap-2 py-1 px-1 rounded hover:bg-stone-50 cursor-pointer transition-colors"
-              >
-                <input
-                  type="checkbox"
-                  checked={filters.statuses.includes(key)}
-                  onChange={() => toggleStatus(key)}
-                  className="h-3.5 w-3.5 rounded border-stone-300 text-stone-700 focus:ring-stone-500"
-                />
-                <span className="text-sm text-stone-600">{config.label}</span>
-              </label>
-            )
-          )}
+      {/* Status - chips */}
+      <Section title="Status">
+        <div className="flex flex-wrap gap-1">
+          {(
+            Object.entries(STATUS_CONFIG) as [
+              StatementStatus,
+              (typeof STATUS_CONFIG)[StatementStatus]
+            ][]
+          ).map(([key, config]) => (
+            <button
+              key={key}
+              onClick={() => toggleStatus(key)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-medium border transition-all ${
+                filters.statuses.includes(key)
+                  ? `${config.bg} ${config.color} ${config.border} shadow-sm`
+                  : "bg-white border-stone-200 text-stone-500 hover:border-stone-300"
+              }`}
+            >
+              {config.label}
+            </button>
+          ))}
         </div>
-      </div>
+      </Section>
 
-      {/* Type */}
-      <div>
-        <h4 className="text-xs font-medium text-stone-500 uppercase tracking-wide mb-2">
-          Statement Type
-        </h4>
-        <div className="space-y-1">
-          {(Object.entries(TYPE_CONFIG) as [StatementType, (typeof TYPE_CONFIG)[StatementType]][]).map(
-            ([key, config]) => (
-              <label
-                key={key}
-                className="flex items-center gap-2 py-1 px-1 rounded hover:bg-stone-50 cursor-pointer transition-colors"
-              >
-                <input
-                  type="checkbox"
-                  checked={filters.types.includes(key)}
-                  onChange={() => toggleType(key)}
-                  className="h-3.5 w-3.5 rounded border-stone-300 text-stone-700 focus:ring-stone-500"
-                />
-                <span className="text-sm text-stone-600">{config.label}</span>
-              </label>
-            )
-          )}
+      {/* Type - chips */}
+      <Section title="Type">
+        <div className="flex flex-wrap gap-1">
+          {(
+            Object.entries(TYPE_CONFIG) as [
+              StatementType,
+              (typeof TYPE_CONFIG)[StatementType]
+            ][]
+          ).map(([key, config]) => (
+            <button
+              key={key}
+              onClick={() => toggleType(key)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-medium border transition-all ${
+                filters.types.includes(key)
+                  ? `${config.bg} ${config.color} border-current/20 shadow-sm`
+                  : "bg-white border-stone-200 text-stone-500 hover:border-stone-300"
+              }`}
+            >
+              {config.label}
+            </button>
+          ))}
         </div>
-      </div>
+      </Section>
 
-      {/* Date range */}
-      <div>
-        <h4 className="text-xs font-medium text-stone-500 uppercase tracking-wide mb-2">
-          Date Range
-        </h4>
-        <div className="space-y-2">
-          <input
-            type="date"
-            value={filters.dateFrom}
-            onChange={(e) =>
-              onChange({ ...filters, dateFrom: e.target.value })
-            }
-            className="w-full rounded-md border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-stone-600 focus:outline-none focus:ring-1 focus:ring-stone-300"
-          />
-          <input
-            type="date"
-            value={filters.dateTo}
-            onChange={(e) =>
-              onChange({ ...filters, dateTo: e.target.value })
-            }
-            className="w-full rounded-md border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-stone-600 focus:outline-none focus:ring-1 focus:ring-stone-300"
-          />
+      {/* Date range - collapsible, lower priority */}
+      <Section title="Date Range" defaultOpen={false}>
+        <div className="space-y-1.5">
+          <div>
+            <label className="text-[10px] text-stone-400 uppercase tracking-wide">From</label>
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) =>
+                onChange({ ...filters, dateFrom: e.target.value })
+              }
+              className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-[11px] text-stone-600 focus:outline-none focus:ring-1 focus:ring-stone-300"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-stone-400 uppercase tracking-wide">To</label>
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) =>
+                onChange({ ...filters, dateTo: e.target.value })
+              }
+              className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-[11px] text-stone-600 focus:outline-none focus:ring-1 focus:ring-stone-300"
+            />
+          </div>
         </div>
-      </div>
+      </Section>
     </div>
   );
 }

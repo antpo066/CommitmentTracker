@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { mockPerson, mockStatements } from "@/data/mock";
 import { TopNav } from "@/components/layout/TopNav";
 import { ProfileHeader } from "@/components/layout/ProfileHeader";
@@ -47,6 +47,18 @@ export default function PersonPage() {
     });
   }, [filters]);
 
+  // Auto-select first statement on desktop
+  useEffect(() => {
+    if (
+      filteredStatements.length > 0 &&
+      !selectedStatement &&
+      typeof window !== "undefined" &&
+      window.innerWidth >= 1024
+    ) {
+      setSelectedStatement(filteredStatements[0]);
+    }
+  }, [filteredStatements, selectedStatement]);
+
   const handleViewEvidence = (statement: Statement) => {
     setSelectedStatement(statement);
     // On mobile, open drawer
@@ -61,7 +73,7 @@ export default function PersonPage() {
       <ProfileHeader person={person} />
       <StatsSummary person={person} />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4">
         {/* Mobile filter toggle */}
         <div className="lg:hidden mb-4">
           <button
@@ -102,7 +114,7 @@ export default function PersonPage() {
 
           {/* Center: Timeline feed */}
           <main className="flex-1 min-w-0">
-            <div className="space-y-4">
+            <div className="space-y-3">
               {filteredStatements.length === 0 ? (
                 <div className="rounded-lg border border-[var(--color-border)] bg-white p-8 text-center">
                   <p className="text-sm text-stone-500">
