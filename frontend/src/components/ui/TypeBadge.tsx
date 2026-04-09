@@ -1,9 +1,8 @@
-import { TYPE_CONFIG } from "@/lib/constants";
-import type { StatementType } from "@/lib/types";
+import { getTypeConfig } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-export function TypeBadge({ type }: { type: StatementType }) {
-  const config = TYPE_CONFIG[type];
+export function TypeBadge({ type }: { type: string }) {
+  const config = getTypeConfig(type);
   return (
     <span
       className={cn(

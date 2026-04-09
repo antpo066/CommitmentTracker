@@ -1,15 +1,14 @@
-import { STATUS_CONFIG } from "@/lib/constants";
-import type { StatementStatus } from "@/lib/types";
+import { getStatusConfig } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function StatusBadge({
   status,
   size = "sm",
 }: {
-  status: StatementStatus;
+  status: string;
   size?: "sm" | "md";
 }) {
-  const config = STATUS_CONFIG[status];
+  const config = getStatusConfig(status);
   return (
     <span
       className={cn(

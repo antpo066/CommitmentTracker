@@ -12,6 +12,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
       orderBy: { createdAt: 'desc' },
       include: {
         person: { select: { id: true, name: true, slug: true } },
+        sourceDocument: { select: { id: true, title: true, sourceType: true } },
       },
     });
     res.json(statements);
@@ -20,7 +21,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Get all statements (admin view, includes unapproved)
+// Get all statements (admin view)
 router.get('/all', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { page = '1', limit = '50' } = req.query;
@@ -34,6 +35,7 @@ router.get('/all', requireAuth, async (req: AuthRequest, res: Response) => {
         take,
         include: {
           person: { select: { id: true, name: true, slug: true } },
+          sourceDocument: { select: { id: true, title: true } },
           reviewedBy: { select: { name: true } },
         },
       }),
@@ -49,10 +51,13 @@ router.get('/all', requireAuth, async (req: AuthRequest, res: Response) => {
 // Approve a statement
 router.post('/:id/approve', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
+    const { status, adminNotes } = req.body;
     const statement = await prisma.statement.update({
       where: { id: req.params.id },
       data: {
         approved: true,
+        status: status || undefined,
+        adminNotes: adminNotes || undefined,
         reviewedById: req.userId,
         reviewedAt: new Date(),
       },
@@ -73,20 +78,17 @@ router.post('/:id/reject', requireAuth, async (req: AuthRequest, res: Response) 
   }
 });
 
-// Update status of a statement
+// Update status with evidence
 router.patch('/:id/status', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, evidenceNote } = req.body;
-    if (!status) {
-      res.status(400).json({ error: 'Status is required' });
-      return;
-    }
+    const { status, adminNotes } = req.body;
+    if (!status) { res.status(400).json({ error: 'Status is required' }); return; }
 
     const statement = await prisma.statement.update({
       where: { id: req.params.id },
       data: {
         status,
-        evidenceNote: evidenceNote || undefined,
+        adminNotes: adminNotes || undefined,
         reviewedById: req.userId,
         reviewedAt: new Date(),
       },

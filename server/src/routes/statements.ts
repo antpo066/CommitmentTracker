@@ -8,16 +8,17 @@ const router = Router();
 // Public: list approved statements with filters
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { personId, status, statementType, from, to, page = '1', limit = '20' } = req.query;
+    const { personId, personSlug, status, statementType, from, to, page = '1', limit = '20' } = req.query;
 
     const where: Prisma.StatementWhereInput = { approved: true };
     if (personId) where.personId = personId as string;
+    if (personSlug) where.person = { slug: personSlug as string };
     if (status) where.status = status as any;
     if (statementType) where.statementType = statementType as any;
     if (from || to) {
-      where.dateMade = {};
-      if (from) where.dateMade.gte = new Date(from as string);
-      if (to) where.dateMade.lte = new Date(to as string);
+      where.sourceDate = {};
+      if (from) where.sourceDate.gte = new Date(from as string);
+      if (to) where.sourceDate.lte = new Date(to as string);
     }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
@@ -26,15 +27,14 @@ router.get('/', async (req: Request, res: Response) => {
     const [statements, total] = await Promise.all([
       prisma.statement.findMany({
         where,
-        orderBy: { dateMade: 'desc' },
+        orderBy: { sourceDate: 'desc' },
         skip,
         take,
         include: {
           person: { select: { id: true, name: true, slug: true } },
-          notes: {
-            where: { noteType: { in: ['CONTEXT', 'DISPUTE'] } },
-            orderBy: { createdAt: 'desc' },
-          },
+          sourceDocument: { select: { id: true, title: true, sourceType: true } },
+          evidence: { select: { id: true, evidenceType: true, excerpt: true, evidenceDate: true, sourceTitle: true } },
+          _count: { select: { notes: true, disputes: true } },
         },
       }),
       prisma.statement.count({ where }),
@@ -46,13 +46,17 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Public: get single statement
+// Public: get single approved statement with full details
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const statement = await prisma.statement.findUnique({
       where: { id: req.params.id },
       include: {
-        person: { select: { id: true, name: true, slug: true } },
+        person: { select: { id: true, name: true, slug: true, title: true } },
+        sourceDocument: true,
+        evidence: {
+          orderBy: { evidenceDate: 'desc' },
+        },
         notes: {
           orderBy: { createdAt: 'desc' },
           include: { author: { select: { name: true } } },
@@ -64,41 +68,45 @@ router.get('/:id', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Statement not found' });
       return;
     }
-
     res.json(statement);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch statement' });
   }
 });
 
-// Admin: create a statement (goes to review queue)
+// Admin: create statement (goes to review queue)
 router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const {
-      personId, exactQuote, source, sourceUrl, sourceType,
-      dateMade, statementType, impliedDeadline, measurableOutcome,
-      confidenceScore, evidenceNote,
+      personId, sourceDocumentId, exactQuote, context, interpretation,
+      statementType, sourceTitle, sourceUrl, sourceDate,
+      impliedDeadline, measurableOutcome, confidenceScore,
+      adminNotes, aiExtracted, aiConfidence,
     } = req.body;
 
-    if (!personId || !exactQuote || !source || !sourceType || !dateMade || !statementType) {
-      res.status(400).json({ error: 'Missing required fields: personId, exactQuote, source, sourceType, dateMade, statementType' });
+    if (!personId || !exactQuote || !statementType || !sourceTitle || !sourceDate) {
+      res.status(400).json({ error: 'Missing required fields' });
       return;
     }
 
     const statement = await prisma.statement.create({
       data: {
         personId,
+        sourceDocumentId: sourceDocumentId || null,
         exactQuote,
-        source,
-        sourceUrl,
-        sourceType,
-        dateMade: new Date(dateMade),
+        context: context || null,
+        interpretation: interpretation || null,
         statementType,
+        sourceTitle,
+        sourceUrl: sourceUrl || null,
+        sourceDate: new Date(sourceDate),
         impliedDeadline: impliedDeadline ? new Date(impliedDeadline) : null,
-        measurableOutcome,
+        measurableOutcome: measurableOutcome || null,
         confidenceScore: confidenceScore ? parseInt(confidenceScore) : 3,
-        evidenceNote,
+        adminNotes: adminNotes || null,
         approved: false,
+        aiExtracted: aiExtracted || false,
+        aiConfidence: aiConfidence || null,
       },
       include: { person: { select: { name: true, slug: true } } },
     });
@@ -109,41 +117,34 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Admin: update a statement
+// Admin: update statement
 router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const {
-      exactQuote, source, sourceUrl, sourceType,
-      dateMade, statementType, impliedDeadline, measurableOutcome,
-      confidenceScore, status, evidenceNote,
-    } = req.body;
-
     const data: any = {};
-    if (exactQuote !== undefined) data.exactQuote = exactQuote;
-    if (source !== undefined) data.source = source;
-    if (sourceUrl !== undefined) data.sourceUrl = sourceUrl;
-    if (sourceType !== undefined) data.sourceType = sourceType;
-    if (dateMade !== undefined) data.dateMade = new Date(dateMade);
-    if (statementType !== undefined) data.statementType = statementType;
-    if (impliedDeadline !== undefined) data.impliedDeadline = impliedDeadline ? new Date(impliedDeadline) : null;
-    if (measurableOutcome !== undefined) data.measurableOutcome = measurableOutcome;
-    if (confidenceScore !== undefined) data.confidenceScore = parseInt(confidenceScore);
-    if (status !== undefined) data.status = status;
-    if (evidenceNote !== undefined) data.evidenceNote = evidenceNote;
+    const fields = [
+      'exactQuote', 'context', 'interpretation', 'statementType',
+      'sourceTitle', 'sourceUrl', 'adminNotes', 'measurableOutcome',
+    ];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) data[f] = req.body[f];
+    }
+    if (req.body.sourceDate) data.sourceDate = new Date(req.body.sourceDate);
+    if (req.body.impliedDeadline !== undefined) data.impliedDeadline = req.body.impliedDeadline ? new Date(req.body.impliedDeadline) : null;
+    if (req.body.confidenceScore !== undefined) data.confidenceScore = parseInt(req.body.confidenceScore);
+    if (req.body.status !== undefined) data.status = req.body.status;
 
     const statement = await prisma.statement.update({
       where: { id: req.params.id },
       data,
       include: { person: { select: { name: true, slug: true } } },
     });
-
     res.json(statement);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update statement' });
   }
 });
 
-// Admin: delete a statement
+// Admin: delete statement
 router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     await prisma.statement.delete({ where: { id: req.params.id } });

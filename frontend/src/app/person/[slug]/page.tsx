@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { mockPerson, mockStatements } from "@/data/mock";
+import { useState, useMemo, useEffect, use } from "react";
+import { api, type PersonSummary, type StatementRecord, type StatementsResponse } from "@/lib/api";
 import { TopNav } from "@/components/layout/TopNav";
 import { ProfileHeader } from "@/components/layout/ProfileHeader";
 import { StatsSummary } from "@/components/layout/StatsSummary";
@@ -10,15 +10,19 @@ import { TimelineCard } from "@/components/statements/TimelineCard";
 import { EvidencePanel } from "@/components/evidence/EvidencePanel";
 import { EvidenceDrawer } from "@/components/evidence/EvidenceDrawer";
 import { Filter } from "lucide-react";
-import type { Statement } from "@/lib/types";
 
-export default function PersonPage() {
-  const person = mockPerson;
-  const [selectedStatement, setSelectedStatement] = useState<Statement | null>(
-    null
-  );
+export default function PersonPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = use(params);
+  const [person, setPerson] = useState<PersonSummary | null>(null);
+  const [statements, setStatements] = useState<StatementRecord[]>([]);
+  const [selectedStatement, setSelectedStatement] = useState<StatementRecord | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
     types: [],
@@ -28,24 +32,35 @@ export default function PersonPage() {
     dateTo: "",
   });
 
+  // Fetch person and statements
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.get<PersonSummary>(`/api/persons/${slug}`),
+      api.get<StatementsResponse>(`/api/statements?personSlug=${slug}&limit=100`),
+    ])
+      .then(([p, s]) => {
+        setPerson(p);
+        setStatements(s.statements);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  // Apply client-side filters
   const filteredStatements = useMemo(() => {
-    return mockStatements.filter((s) => {
-      if (filters.statuses.length > 0 && !filters.statuses.includes(s.status))
+    return statements.filter((s) => {
+      if (filters.statuses.length > 0 && !filters.statuses.includes(s.status.toLowerCase() as any))
         return false;
-      if (
-        filters.types.length > 0 &&
-        !filters.types.includes(s.statementType)
-      )
+      if (filters.types.length > 0 && !filters.types.includes(s.statementType.toLowerCase() as any))
         return false;
-      if (filters.resolved === "resolved" && s.status === "unresolved")
-        return false;
-      if (filters.resolved === "unresolved" && s.status !== "unresolved")
-        return false;
-      if (filters.dateFrom && s.dateMade < filters.dateFrom) return false;
-      if (filters.dateTo && s.dateMade > filters.dateTo) return false;
+      if (filters.resolved === "resolved" && s.status === "UNRESOLVED") return false;
+      if (filters.resolved === "unresolved" && s.status !== "UNRESOLVED") return false;
+      if (filters.dateFrom && s.sourceDate < filters.dateFrom) return false;
+      if (filters.dateTo && s.sourceDate > filters.dateTo) return false;
       return true;
     });
-  }, [filters]);
+  }, [statements, filters]);
 
   // Auto-select first statement on desktop
   useEffect(() => {
@@ -59,13 +74,34 @@ export default function PersonPage() {
     }
   }, [filteredStatements, selectedStatement]);
 
-  const handleViewEvidence = (statement: Statement) => {
+  const handleViewEvidence = (statement: StatementRecord) => {
     setSelectedStatement(statement);
-    // On mobile, open drawer
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       setMobileDrawerOpen(true);
     }
   };
+
+  if (loading) {
+    return (
+      <>
+        <TopNav />
+        <div className="flex items-center justify-center py-20">
+          <p className="text-sm text-stone-400">Loading profile...</p>
+        </div>
+      </>
+    );
+  }
+
+  if (!person) {
+    return (
+      <>
+        <TopNav />
+        <div className="flex items-center justify-center py-20">
+          <p className="text-sm text-stone-500">Person not found.</p>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -101,7 +137,6 @@ export default function PersonPage() {
 
         {/* 3-column layout */}
         <div className="flex gap-6">
-          {/* Left: Filter sidebar - desktop only */}
           <aside className="hidden lg:block w-56 shrink-0">
             <div className="sticky top-20">
               <FilterSidebar
@@ -112,7 +147,6 @@ export default function PersonPage() {
             </div>
           </aside>
 
-          {/* Center: Timeline feed */}
           <main className="flex-1 min-w-0">
             <div className="space-y-3">
               {filteredStatements.length === 0 ? (
@@ -134,7 +168,6 @@ export default function PersonPage() {
             </div>
           </main>
 
-          {/* Right: Evidence panel - desktop only */}
           <aside className="hidden lg:block w-80 shrink-0">
             <div className="sticky top-20">
               <div className="rounded-lg border border-[var(--color-border)] bg-white p-4 max-h-[calc(100vh-6rem)] overflow-y-auto">
@@ -148,7 +181,6 @@ export default function PersonPage() {
         </div>
       </div>
 
-      {/* Mobile evidence drawer */}
       {mobileDrawerOpen && (
         <EvidenceDrawer
           statement={selectedStatement}
